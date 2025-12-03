@@ -2,7 +2,6 @@
 
 using System.Globalization;
 using CsvHelper;
-using Microsoft.VisualBasic.FileIO;
 using networkTraceParser.Models;
 
 Console.WriteLine("Hello, World!");
@@ -11,12 +10,10 @@ using var csv = new CsvReader(reader,  CultureInfo.InvariantCulture);
 csv.Context.RegisterClassMap<DataInstanceMap>();
 var records = csv.GetRecords<DataInstance>().ToList();
 Console.WriteLine(records.Count);
-var bits = (
-    from record in records 
-    where records.IndexOf(record) != 0 
-    let priorRecord = records[records.IndexOf(record) - 1] 
-    where priorRecord.Channel3 == 0 && record.Channel3 == 1 
-    select new Bit(priorRecord, record))
+var bits = records
+    .Zip(records.Skip(1), (prev, curr) => new { prev, curr }) 
+    .Where(pair => pair.prev.Channel3 == 0 && pair.curr.Channel3 == 1)
+    .Select(pair => new Bit(pair.prev, pair.curr))
     .ToList();
 
 Console.WriteLine(bits.Count);

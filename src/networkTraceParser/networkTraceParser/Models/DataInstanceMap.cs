@@ -2,7 +2,7 @@ using CsvHelper.Configuration;
 
 namespace networkTraceParser.Models;
 
-public class DataInstanceMap : ClassMap<DataInstance>
+public sealed class DataInstanceMap : ClassMap<DataInstance>
 {
     public DataInstanceMap()
     {
