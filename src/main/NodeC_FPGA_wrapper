@@ -1,4 +1,4 @@
-module NodeC_PMUC_FPGA_wrapper
+module NodeC_FPGA_wrapper
 (
     //NODEC STUFF
     input CLK_FAST_IN,  // input
@@ -13,18 +13,6 @@ module NodeC_PMUC_FPGA_wrapper
     inout EXT_CLK_IN_1,
     inout GPIO7_1,
     inout GPIO8_1,
-
-    //PMU STUFF
-//    input PCLK,     // clock input
-//    input PRESETN,  // reset input
-//    inout PAD0,
-//    inout PAD1,
-//    inout PAD2,
-//    inout PAD3,
-//    inout PAD4,
-//    inout PAD5,
-//    inout PAD6,
-//    inout PAD7
 
     //2nd NODEC STUFF
     input POC_2,   // active low reset
@@ -54,20 +42,6 @@ Naute_NodeC_HR_FPGA_Wrapper NodeC1
 .GPIO7(GPIO7_1),
 .GPIO8(GPIO8_1)
 );
-
-//pmu_ispic_bridge_fpga_wrapper PMU
-//(
-//.PCLK(PCLK),
-//.PRESETN(PRESETN),
-//.PAD0(PAD0),
-//.PAD1(PAD1),
-//.PAD2(PAD2),
-//.PAD3(PAD3),
-//.PAD4(PAD4),
-//.PAD5(PAD5),
-//.PAD6(PAD6),
-//.PAD7(PAD7)
-//);
 
 Naute_NodeC_HR_FPGA_Wrapper NodeC2
 (
