@@ -4,7 +4,7 @@
 //#include "arm_math.h"
 #include "CMSDK_CM0plus.h"
 #include "core_cm0plus.h"
-#include "/net/redfox.ece.Virginia.EDU/isan2/users/bengroup/workspace/Trenton/ARM_IP/Split_KWS_Testbed/digital_top/BP200-BU-00000-r1p1-00rel0/software/common/retarget/uart_stdout.h"
+#include "uart_stdout.h"
 
 
 // Constants
