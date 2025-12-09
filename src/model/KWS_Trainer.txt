@@ -1,0 +1,360 @@
+///////////////////IN TERMINAL////////////////////////
+%%shell
+eval "$(conda shell.bash hook)"
+conda activate myenv
+pip install tensorflow==1.15
+python3 /content/test.py
+///////////////////IN TERMINAL////////////////////////
+
+
+import os
+import sys
+import numpy as np
+import shutil
+import tarfile
+from zipfile import ZipFile
+
+# Install requests if not already installed
+try:
+    import requests
+except ImportError:
+    os.system("pip install requests")
+    import requests
+
+# Function to download a file
+def download_file(url, filename):
+    r = requests.get(url)
+    with open(filename, 'wb') as f:
+        f.write(r.content)
+
+# Download TensorFlow
+download_file("https://github.com/tensorflow/tensorflow/archive/v2.4.1.zip", "tensorflow.zip")
+
+# Unzip the TensorFlow file
+with ZipFile("tensorflow.zip", 'r') as zip_ref:
+    zip_ref.extractall(".")
+
+# Move the TensorFlow folder
+shutil.move("tensorflow-2.4.1/", "tensorflow")
+
+# Set TensorFlow compatibility mode
+import tensorflow.compat.v1 as tf
+tf.disable_v2_behavior()
+
+# Ensure the correct TensorFlow version
+assert(tf.__version__ == "1.15.0")  # Uncomment if you want to enforce this check
+
+# Add path for speech processing modules
+sys.path.append("tensorflow/tensorflow/examples/speech_commands/")
+import input_data
+import models
+
+# Install required packages (You may need to run this manually if you're not using Colab)
+os.system("pip install ffmpeg-python")
+os.system("apt-get update && apt-get -qq install xxd")
+
+# Download the dataset
+download_file("https://storage.googleapis.com/download.tensorflow.org/data/speech_commands_v0.02.tar.gz", "speech_commands_v0.02.tar.gz")
+
+# Create dataset directory and extract files
+DATASET_DIR = 'dataset/'
+os.makedirs(DATASET_DIR, exist_ok=True)
+with tarfile.open("speech_commands_v0.02.tar.gz", "r:gz") as tar:
+    tar.extractall(path=DATASET_DIR)
+
+# Clean up
+os.remove("speech_commands_v0.02.tar.gz")
+
+# Set up parameters
+WANTED_WORDS = "yes,no,up,down,left,right,on,off,stop,go,one,two,three,four,five,six,seven,eight,nine,backward,forward,follow,learn,bed,bird,cat,dog,happy,house,marvin,sheila,tree,wow"
+TRAINING_STEPS = "6000,1000"
+LEARNING_RATE = "0.001,0.0001"
+MODEL_ARCHITECTURE = 'tiny_conv'
+
+# Calculate total steps
+TOTAL_STEPS = str(sum(map(int, TRAINING_STEPS.split(","))))
+
+print("Training these words:", WANTED_WORDS)
+print("Training steps in each stage:", TRAINING_STEPS)
+print("Learning rate in each stage:", LEARNING_RATE)
+print("Total number of training steps:", TOTAL_STEPS)
+
+# Calculate silence and unknown percentages
+number_of_labels = WANTED_WORDS.count(',') + 1
+number_of_total_labels = number_of_labels + 2  # silence and unknown
+equal_percentage_of_training_samples = int(100.0 / number_of_total_labels)
+SILENT_PERCENTAGE = equal_percentage_of_training_samples
+UNKNOWN_PERCENTAGE = equal_percentage_of_training_samples
+
+# Setup directories
+LOGS_DIR = 'logs/'
+TRAIN_DIR = 'train/'
+MODELS_DIR = 'models'
+os.makedirs(MODELS_DIR, exist_ok=True)
+
+MODEL_TF = os.path.join(MODELS_DIR, 'KWS_custom.pb')
+MODEL_TFLITE = os.path.join(MODELS_DIR, 'KWS_custom.tflite')
+FLOAT_MODEL_TFLITE = os.path.join(MODELS_DIR, 'KWS_custom_float.tflite')
+MODEL_TFLITE_MICRO = os.path.join(MODELS_DIR, 'KWS_custom.cc')
+SAVED_MODEL = os.path.join(MODELS_DIR, 'KWS_custom_saved_model')
+
+PREPROCESS = 'micro'
+WINDOW_STRIDE = 20
+VALIDATION_PERCENTAGE = 10
+TESTING_PERCENTAGE = 10
+
+# Running TensorBoard
+# You might need to run this manually outside the script if you're not in a notebook
+# os.system(f"tensorboard --logdir {LOGS_DIR}")
+
+# Train the model
+os.system(f"python tensorflow/tensorflow/examples/speech_commands/train.py "
+          f"--data_dir={DATASET_DIR} "
+          f"--wanted_words={WANTED_WORDS} "
+          f"--silence_percentage={SILENT_PERCENTAGE} "
+          f"--unknown_percentage={UNKNOWN_PERCENTAGE} "
+          f"--preprocess={PREPROCESS} "
+          f"--window_stride={WINDOW_STRIDE} "
+          f"--model_architecture={MODEL_ARCHITECTURE} "
+          f"--how_many_training_steps={TRAINING_STEPS} "
+          f"--learning_rate={LEARNING_RATE} "
+          f"--train_dir={TRAIN_DIR} "
+          f"--summaries_dir={LOGS_DIR} "
+          f"--verbosity=DEBUG")
+
+# Freeze the model
+os.system(f"python tensorflow/tensorflow/examples/speech_commands/freeze.py "
+          f"--wanted_words={WANTED_WORDS} "
+          f"--window_stride={WINDOW_STRIDE} "
+          f"--preprocess={PREPROCESS} "
+          f"--model_architecture={MODEL_ARCHITECTURE} "
+          f"--start_checkpoint={TRAIN_DIR}{MODEL_ARCHITECTURE}.ckpt-{TOTAL_STEPS} "
+          f"--save_format=saved_model "
+          f"--output_file={SAVED_MODEL}")
+
+# Prepare model settings
+model_settings = models.prepare_model_settings(
+    len(input_data.prepare_words_list(WANTED_WORDS.split(','))),
+    16000, 1000, 30.0, WINDOW_STRIDE, 40, PREPROCESS)
+
+# Set up the audio processor
+audio_processor = input_data.AudioProcessor(
+    '', DATASET_DIR, SILENT_PERCENTAGE, UNKNOWN_PERCENTAGE,
+    WANTED_WORDS.split(','), VALIDATION_PERCENTAGE, TESTING_PERCENTAGE, model_settings, LOGS_DIR)
+
+# Representative dataset size
+REP_DATA_SIZE = 100
+
+with tf.Session() as sess:
+    float_converter = tf.lite.TFLiteConverter.from_saved_model(SAVED_MODEL)
+    float_tflite_model = float_converter.convert()
+    float_tflite_model_size = open(FLOAT_MODEL_TFLITE, "wb").write(float_tflite_model)
+    print("Float model is %d bytes" % float_tflite_model_size)
+
+    converter = tf.lite.TFLiteConverter.from_saved_model(SAVED_MODEL)
+    converter.optimizations = [tf.lite.Optimize.DEFAULT]
+    converter.inference_input_type = tf.lite.constants.INT8
+    converter.inference_output_type = tf.lite.constants.INT8
+
+    def representative_dataset_gen():
+        for i in range(REP_DATA_SIZE):
+            data, _ = audio_processor.get_data(1, i * 1, model_settings,
+                                                 0.8, 0.1, 100.0, 'testing', sess)
+            flattened_data = np.array(data.flatten(), dtype=np.float32).reshape(1, 1960)
+            yield [flattened_data]
+
+    converter.representative_dataset = representative_dataset_gen
+    tflite_model = converter.convert()
+    tflite_model_size = open(MODEL_TFLITE, "wb").write(tflite_model)
+    print("Quantized model is %d bytes" % tflite_model_size)
+
+    # Convert to C array for use in microcontrollers
+    os.system(f"xxd -i {MODEL_TFLITE} > {MODEL_TFLITE_MICRO}")
+    REPLACE_TEXT = MODEL_TFLITE.replace('/', '_').replace('.', '_')
+    os.system(f"sed -i 's/{REPLACE_TEXT}/g_model/g' {MODEL_TFLITE_MICRO}")
+
+    # Print the contents of the C array
+    with open(MODEL_TFLITE_MICRO, 'r') as f:
+        print(f.read())
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+HERE IS SOME UPDATED CODE FOR LESS MEMORY USAGE!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+import os
+import sys
+import numpy as np
+import shutil
+import tarfile
+from zipfile import ZipFile
+
+# Install requests if not already installed
+try:
+    import requests
+except ImportError:
+    os.system("pip install requests")
+    import requests
+
+# Function to download a file
+def download_file(url, filename):
+    r = requests.get(url)
+    with open(filename, 'wb') as f:
+        f.write(r.content)
+
+# Download TensorFlow
+download_file("https://github.com/tensorflow/tensorflow/archive/v2.4.1.zip", "tensorflow.zip")
+
+# Unzip the TensorFlow file
+with ZipFile("tensorflow.zip", 'r') as zip_ref:
+    zip_ref.extractall(".")
+
+# Move the TensorFlow folder
+shutil.move("tensorflow-2.4.1/", "tensorflow")
+
+# Set TensorFlow compatibility mode
+import tensorflow.compat.v1 as tf
+tf.disable_v2_behavior()
+
+# Ensure the correct TensorFlow version
+assert(tf.__version__ == "1.15.0")  # Uncomment if you want to enforce this check
+
+# Add path for speech processing modules
+sys.path.append("tensorflow/tensorflow/examples/speech_commands/")
+import input_data
+import models
+
+# Install required packages (You may need to run this manually if you're not using Colab)
+os.system("pip install ffmpeg-python")
+os.system("apt-get update && apt-get -qq install xxd")
+
+# Download the dataset
+download_file("https://storage.googleapis.com/download.tensorflow.org/data/speech_commands_v0.02.tar.gz", "speech_commands_v0.02.tar.gz")
+
+# Create dataset directory and extract files
+DATASET_DIR = 'dataset/'
+os.makedirs(DATASET_DIR, exist_ok=True)
+with tarfile.open("speech_commands_v0.02.tar.gz", "r:gz") as tar:
+    tar.extractall(path=DATASET_DIR)
+
+# Clean up
+os.remove("speech_commands_v0.02.tar.gz")
+
+# Set up parameters
+WANTED_WORDS = "house"
+TRAINING_STEPS = "3000,500"  # Reduce training steps to reduce memory usage
+LEARNING_RATE = "0.001,0.0001"
+MODEL_ARCHITECTURE = 'tiny_conv'
+
+# Calculate total steps
+TOTAL_STEPS = str(sum(map(int, TRAINING_STEPS.split(","))))
+
+print("Training these words:", WANTED_WORDS)
+print("Training steps in each stage:", TRAINING_STEPS)
+print("Learning rate in each stage:", LEARNING_RATE)
+print("Total number of training steps:", TOTAL_STEPS)
+
+# Calculate silence and unknown percentages
+number_of_labels = WANTED_WORDS.count(',') + 1
+number_of_total_labels = number_of_labels + 2  # silence and unknown
+equal_percentage_of_training_samples = int(100.0 / number_of_total_labels)
+SILENT_PERCENTAGE = equal_percentage_of_training_samples
+UNKNOWN_PERCENTAGE = equal_percentage_of_training_samples
+
+# Setup directories
+LOGS_DIR = 'logs/'
+TRAIN_DIR = 'train/'
+MODELS_DIR = 'models'
+os.makedirs(MODELS_DIR, exist_ok=True)
+
+MODEL_TF = os.path.join(MODELS_DIR, 'KWS_yes.pb')
+MODEL_TFLITE = os.path.join(MODELS_DIR, 'KWS_custom_yes.tflite')
+FLOAT_MODEL_TFLITE = os.path.join(MODELS_DIR, 'KWS_custom_float_yes.tflite')
+MODEL_TFLITE_MICRO = os.path.join(MODELS_DIR, 'KWS_custom_yes.cc')
+SAVED_MODEL = os.path.join(MODELS_DIR, 'KWS_custom_saved_model_yes')
+
+PREPROCESS = 'micro'
+WINDOW_STRIDE = 10  # Reduced window stride to reduce memory usage
+VALIDATION_PERCENTAGE = 10
+TESTING_PERCENTAGE = 10
+
+# Running TensorBoard
+# You might need to run this manually outside the script if you're not in a notebook
+# os.system(f"tensorboard --logdir {LOGS_DIR}")
+
+# Train the model with smaller batch sizes and reduced steps
+os.system(f"python tensorflow/tensorflow/examples/speech_commands/train.py "
+          f"--data_dir={DATASET_DIR} "
+          f"--wanted_words={WANTED_WORDS} "
+          f"--silence_percentage={SILENT_PERCENTAGE} "
+          f"--unknown_percentage={UNKNOWN_PERCENTAGE} "
+          f"--preprocess={PREPROCESS} "
+          f"--window_stride={WINDOW_STRIDE} "
+          f"--model_architecture={MODEL_ARCHITECTURE} "
+          f"--how_many_training_steps={TRAINING_STEPS} "
+          f"--learning_rate={LEARNING_RATE} "
+          f"--train_dir={TRAIN_DIR} "
+          f"--summaries_dir={LOGS_DIR} "
+          f"--verbosity=DEBUG")
+
+# Freeze the model with pruning
+import tensorflow_model_optimization as tfmot
+
+# Load the trained model
+model = tf.keras.models.load_model(os.path.join(TRAIN_DIR, f"{MODEL_ARCHITECTURE}.ckpt-{TOTAL_STEPS}"))
+
+# Apply pruning to the model
+prune_low_magnitude = tfmot.sparsity.keras.prune_low_magnitude
+model_for_pruning = prune_low_magnitude(model)
+
+# Compile the model (if needed) and train/fine-tune with pruning
+model_for_pruning.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
+model_for_pruning.fit(...)
+
+# Save the pruned model
+model_for_pruning.save(SAVED_MODEL)
+
+# Convert model to TensorFlow Lite
+converter = tf.lite.TFLiteConverter.from_saved_model(SAVED_MODEL)
+converter.optimizations = [tf.lite.Optimize.DEFAULT]  # Apply optimization
+converter.target_spec.supported_ops = [tf.lite.OpsSet.TFLITE_BUILTINS_INT8]
+converter.inference_input_type = tf.lite.constants.INT8
+converter.inference_output_type = tf.lite.constants.INT8
+
+# Representative dataset for quantization
+def representative_dataset_gen():
+    for i in range(100):  # 100 samples for quantization
+        data, _ = audio_processor.get_data(1, i * 1, model_settings, 0.8, 0.1, 100.0, 'testing', sess)
+        flattened_data = np.array(data.flatten(), dtype=np.float32).reshape(1, 1960)
+        yield [flattened_data]
+
+converter.representative_dataset = representative_dataset_gen
+quantized_tflite_model = converter.convert()
+
+# Save the quantized model
+quantized_model_size = open(MODEL_TFLITE, "wb").write(quantized_tflite_model)
+print("Quantized model is %d bytes" % quantized_model_size)
+
+# Convert to C array for use in microcontrollers
+os.system(f"xxd -i {MODEL_TFLITE} > {MODEL_TFLITE_MICRO}")
+REPLACE_TEXT = MODEL_TFLITE.replace('/', '_').replace('.', '_')
+os.system(f"sed -i 's/{REPLACE_TEXT}/g_model/g' {MODEL_TFLITE_MICRO}")
+
+# Print the contents of the C array
+with open(MODEL_TFLITE_MICRO, 'r') as f:
+    print(f.read())
+
+
+
+

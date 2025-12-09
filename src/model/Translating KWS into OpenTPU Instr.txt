@@ -1,0 +1,52 @@
+Translating This into OpenTPU Instructions
+Given this flow, let's break down how you could implement this with the OpenTPU instructions:
+
+1. Reshape Layer (Reshape_1)
+The Reshape operation simply reorganizes the input tensor.
+In OpenTPU, you don’t need any special instruction for reshaping. You can handle reshaping as a preprocessing step in software before passing data to the TPU. If necessary, this could be handled with a combination of Read Host Memory and Write Host Memory instructions to reshape the data in the unified buffer (UB).
+2. Depthwise Convolution
+This is the key operation. You will need to:
+Read Weights (RW instruction) to load the depthwise convolution filters.
+Matrix Multiply/Convolution (MMC instruction) to perform the depthwise convolution operation. This involves using the loaded filters and applying them across the reshaped input tensor. In your case, the stride is 2 and padding is SAME, so you'll need to account for that in the data processing and padding.
+Activation (ACT.RQ instruction) to apply the ReLU activation function after the convolution operation.
+For each convolution:
+
+Use the RW instruction to load the weights for the convolution.
+Use MMC.S to perform the matrix multiplication or depthwise convolution.
+After the convolution, use ACT.RQ to apply ReLU activation.
+3. Fully Connected (Dense) Layer
+After the depthwise convolution, the model performs a fully connected (dense) layer, which involves:
+Reading the fully connected weights from memory with the RW instruction.
+Matrix multiplication with MMC, where you multiply the output of the depthwise convolution with the dense weights.
+No activation is applied here (fused activation is NONE).
+Biases are applied as floating-point values (so you need to account for them as well, using add_1_weights.mem if necessary).
+You will need to load the weights and biases for the fully connected layer using the RW and possibly Read Host Memory instructions. After that, perform the matrix multiplication with the MMC instruction.
+
+4. Softmax Layer
+The softmax layer computes the probabilities for each class from the raw output logits. The OpenTPU doesn’t natively support softmax as an instruction (based on the list of available instructions), so you would likely need to:
+Handle this in software after the TPU has performed all the matrix multiplications and activations.
+Alternatively, you could implement a custom softmax kernel on the host side, where you take the output of the fully connected layer and compute the softmax.
+OpenTPU Instructions for Each Layer
+Here’s an outline of the OpenTPU instructions for each step:
+
+Reshape (Reshape_1)
+
+Handle this in software by reshaping the tensor before passing it to the TPU.
+Depthwise Convolution 2D
+
+RW: Load depthwise convolution filters from memory.
+MMC.S: Perform depthwise convolution with stride 2 and SAME padding.
+ACT.RQ: Apply ReLU activation to the result of the convolution.
+Fully Connected (Dense) Layer
+
+RW: Load the weights and biases for the fully connected layer.
+MMC: Perform matrix multiplication with the convolution output and fully connected weights.
+ACT.NONE: Skip activation, as no activation is fused with this layer.
+Softmax
+
+This must be done in software after TPU computations, as it involves exponentiation and normalization.
+Do You Need the add_1_weights.mem File?
+Based on your description, it looks like the addition operation (add_1_weights.mem) corresponds to the biases for one of the layers, probably the fully connected layer or the depthwise convolution. The biases should be added after the matrix multiplication, but the exact need for the add_1_weights.mem file depends on the layer structure:
+
+If the fully connected layer requires biases, you'll need to load them from the add_1_weights.mem file and add them to the result of the matrix multiplication.
+If there is no bias in your network or if the bias is handled elsewhere (or is not needed), you can omit the add_1_weights.mem file.

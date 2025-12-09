@@ -1,0 +1,130 @@
+//Floating Point KWS C Code//
+
+#include <stdint.h>
+#include <stdlib.h>
+#include <stdio.h>
+#include <math.h>
+
+#define INPUT_SIZE 490  // Size of the input (49 * 10)
+#define CONV_KERNEL_SIZE_X 5
+#define CONV_KERNEL_SIZE_Y 4
+#define CONV_OUTPUT_SIZE_X 45  // After applying 5x4 kernel to 49x10 input (valid padding)
+#define CONV_OUTPUT_SIZE_Y 7   // After applying 5x4 kernel to 49x10 input (valid padding)
+#define FC_SIZE 4  // Fully connected layer size (first FC layer)
+#define OUTPUT_SIZE 1  // Output layer size (binary classification)
+#define CONV_BIAS 0
+
+// ReLU activation function
+int8_t relu(float x) {
+    return (x < 0) ? 0 : (int8_t) x;
+}
+
+// Sigmoid activation function
+float sigmoid(float x) {
+    return 1.0f / (1.0f + expf(-x));
+}
+
+// Depthwise Convolution
+void depthwise_conv2d(const int8_t *input, const int8_t *kernel, int8_t *output,
+                      int input_width, int input_height, int kernel_width, int kernel_height) {
+    int output_width = input_width - kernel_width + 1;
+    int output_height = input_height - kernel_height + 1;
+    
+    for (int i = 0; i < output_height; i++) {
+        for (int j = 0; j < output_width; j++) {
+            float sum = 0.0f;
+            for (int ki = 0; ki < kernel_height; ki++) {
+                for (int kj = 0; kj < kernel_width; kj++) {
+                    sum += input[(i + ki) * input_width + (j + kj)] * kernel[ki * kernel_width + kj];
+                }
+            }
+            sum+=CONV_BIAS;
+            output[i * output_width + j] = relu(sum);
+        }
+    }
+}
+
+
+
+void flatten(const int8_t *input, int8_t *output, int input_width, int input_height) {
+    int index = 0;
+    for (int i = 0; i < input_height; i++) {
+        for (int j = 0; j < input_width; j++) {
+            output[index++] = input[i * input_width + j];
+        }
+    }
+}
+
+
+
+
+// Fully connected layer with ReLU activation
+void fully_connected_relu(const int8_t *input, const int8_t *weights, const int8_t *bias,
+                          int8_t *output, int input_size, int output_size) {
+    for (int i = 0; i < output_size; i++) {
+        float sum = bias[i];  // Start with the bias value
+        for (int j = 0; j < input_size; j++) {
+            sum += input[j] * weights[i * input_size + j];
+        }
+        output[i] = relu(sum);  // ReLU activation
+    }
+}
+
+// Fully connected layer with Sigmoid activation
+void fully_connected_sigmoid(const int8_t *input, const int8_t *weights, const int8_t *bias,
+                              float *output, int input_size, int output_size) {
+    for (int i = 0; i < output_size; i++) {
+        float sum = bias[i];  // Start with the bias value
+        for (int j = 0; j < input_size; j++) {
+            sum += input[j] * weights[i * input_size + j];
+        }
+        output[i] = sigmoid(sum);
+    }
+}
+
+int main() {
+    // Input data (example)
+    int8_t input[INPUT_SIZE] = {};
+    int8_t kernel[CONV_KERNEL_SIZE_X * CONV_KERNEL_SIZE_Y] = {};
+    int8_t conv_output[CONV_OUTPUT_SIZE_X * CONV_OUTPUT_SIZE_Y] = {0};
+
+    // Weights and biases (example)
+    int8_t fc_weights[FC_SIZE * CONV_OUTPUT_SIZE_X * CONV_OUTPUT_SIZE_Y] = {};
+    int8_t fc_bias[FC_SIZE] = {};
+    int8_t fc_output[FC_SIZE] = {0};
+
+    int8_t output_weights[OUTPUT_SIZE * FC_SIZE] = {};
+    int8_t output_bias[OUTPUT_SIZE] = {};
+    float output[OUTPUT_SIZE] = {0};
+    int8_t flattened[FC_SIZE * CONV_OUTPUT_SIZE_X * CONV_OUTPUT_SIZE_Y];
+
+    // Perform convolution and flatten
+    depthwise_conv2d(input, kernel, conv_output, 49, 10, CONV_KERNEL_SIZE_X, CONV_KERNEL_SIZE_Y);
+    flatten(conv_output, flattened, CONV_OUTPUT_SIZE_X, CONV_OUTPUT_SIZE_Y);
+    // Perform fully connected layer with ReLU
+    fully_connected_relu(flattened, fc_weights, fc_bias, fc_output, CONV_OUTPUT_SIZE_X * CONV_OUTPUT_SIZE_Y, FC_SIZE);
+
+    // Perform fully connected layer with Sigmoid
+    fully_connected_sigmoid(fc_output, output_weights, output_bias, output, FC_SIZE, OUTPUT_SIZE);
+
+
+
+printf("Conv output:\n");
+for (int i = 0; i < CONV_OUTPUT_SIZE_X * CONV_OUTPUT_SIZE_Y; i++) {
+    printf("%d ", conv_output[i]);
+}
+printf("\n");
+
+printf("Fully connected output:\n");
+for (int i = 0; i < FC_SIZE; i++) {
+    printf("%d ", fc_output[i]);
+}
+printf("\n");
+
+printf("Final output:\n");
+for (int i = 0; i < OUTPUT_SIZE; i++) {
+    printf("%f ", output[i]);
+}
+
+    return 0;
+}
