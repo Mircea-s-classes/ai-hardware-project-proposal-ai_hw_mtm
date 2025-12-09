@@ -1,2 +1,5 @@
-# Model Code
-Add your AI model or ML training code here.
+# Model Overview
+The basic premise of DELPHI is that a model can be broken down into individual layers, and each layer sent to an individual. These extremely small hardware units can communicate using a low-overhead custom protocol, thus allowing them to act as one piece of hardware and execute a model more complex than either would be able to alone. This is an extension of the problem discussed during the class lecture of December 4th.
+
+## Major Steps
+Broadly, the idea behind developing our model is that you can use an existing machine learning training library (such as TinyML) to develop and train a model small enough that each layer can fit on a single chip. Once the model is developed, you can inspect it via a third party tool such as Netron, listed here: [https://netron.app/](https://netron.app/) to determine the weights and biases, and then manually program a chip using a low-level language. There are tools that exist that allow the exporting of a single layer's information, however DELPHI required a tight coupling from the models to the physical connections of a chip, and the custom networking protocol, that ultimately we determined this translation step was necessary.
