@@ -1,3 +1,6 @@
+// Note: This file contains ONLY wrapper code.
+// Licensed ARM CMSDK RTL is instantiated as a black box and not included.
+
 `timescale 1ns / 1ps
 
 module Naute_NodeC_HR_FPGA_Wrapper(
@@ -68,26 +71,26 @@ module Naute_NodeC_HR_FPGA_Wrapper(
 `endif
 
   //-----------------------------------------
-  // Memory options - see cmsdk_mcu_defs.v
+  // Memory options - see ***************.v
 
-  //  This is defined in systems/cortex_m0_mcu/cmsdk_mcu_defs.v
-  //  Based on the definition constants in logical/models/memories/cmsdk_ahb_memory_model_defs.v
+  //  This is defined in systems/cortex_m0_mcu/***************.v
+  //  Based on the definition constants in logical/models/memories/******************.v
   //  0) AHB_ROM_NONE             - memory not present
   //  1) AHB_ROM_BEH_MODEL        - behavioral ROM memory
   //  2) AHB_ROM_FPGA_SRAM_MODEL  - behavioral FPGA SRAM model with SRAM wrapper
   //  3) AHB_ROM_FLASH32_MODEL    - behavioral 32-bit flash memory
   parameter BOOT_MEM_TYPE   = `ARM_CMSDK_BOOT_MEM_TYPE;   // Boot loader memory type
 
-  //  This is defined in systems/cortex_m0_mcu/cmsdk_mcu_defs.v
-  //  Based on the definition constants in logical/models/memories/cmsdk_ahb_memory_model_defs.v
+  //  This is defined in systems/cortex_m0_mcu/******************.v
+  //  Based on the definition constants in logical/models/memories/******************.v
   //  0) AHB_ROM_NONE             - memory not present (Not valid for a Cortex-M0 system)
   //  1) AHB_ROM_BEH_MODEL        - behavioral ROM memory
   //  2) AHB_ROM_FPGA_SRAM_MODEL  - behavioral FPGA SRAM model with SRAM wrapper
   //  3) AHB_ROM_FLASH32_MODEL    - behavioral 32-bit flash memory
   parameter ROM_MEM_TYPE    = `ARM_CMSDK_ROM_MEM_TYPE;   // ROM memory type
 
-  //  This is defined in systems/cortex_m0_mcu/cmsdk_mcu_defs.v
-  //  Based on the definition constants in logical/models/memories/cmsdk_ahb_memory_model_defs.v
+  //  This is defined in systems/cortex_m0_mcu/******************.v
+  //  Based on the definition constants in logical/models/memories/******************.v
   //  0) AHB_RAM_NONE             - memory not present (Not valid for a Cortex-M0 system
   //  1) AHB_RAM_BEH_MODEL        - behavioral RAM memory
   //  2) AHB_RAM_FPGA_SRAM_MODEL  - behavioral SRAM model with SRAM wrapper
@@ -188,7 +191,7 @@ cmsdk_mcu
 //        .CLK_OUT_BUF(CLK_FAST_IN)
 //    );      
     
-    //IOBuffers immitating TSMC Pads
+    //IOBuffers immitating ****************** Pads
 
 //IO 0
 IOBUF IOBUF_0 (
@@ -269,3 +272,4 @@ IOBUF IOBUF_8 (
     
     
 endmodule
+
