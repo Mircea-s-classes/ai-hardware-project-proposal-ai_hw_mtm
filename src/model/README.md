@@ -3,3 +3,6 @@ The basic premise of DELPHI is that a model can be broken down into individual l
 
 ## Major Steps
 Broadly, the idea behind developing our model is that you can use an existing machine learning training library (such as TinyML) to develop and train a model small enough that each layer can fit on a single chip. Once the model is developed, you can inspect it via a third party tool such as Netron, listed here: [https://netron.app/](https://netron.app/) to determine the weights and biases, and then manually program a chip using a low-level language. There are tools that exist that allow the exporting of a single layer's information, however DELPHI required a tight coupling from the models to the physical connections of a chip, and the custom networking protocol, that ultimately we determined this translation step was necessary.
+
+## Input Format
+As discussed previously, the hardware requirements are extremely tight. The focus on this project is the distribution of the ML model, as such we take a data-dense input format referred to as Mel-frequency Cepstrum, which takes a fourier-transform of the input audio and does additional math to result in an array of 50 floating point values that are fed into the model. Each array of 50 floating point numbers represents either the word "yes" or "off".
