@@ -1,0 +1,271 @@
+`timescale 1ns / 1ps
+
+module Naute_NodeC_HR_FPGA_Wrapper(
+
+    input CLK_FAST_IN,  // input
+    input CLK_SLOW_IN,  //input
+    input POC,   // active low reset
+    inout ISPI0_SCLK_0,
+    inout ISPI0_SDIO_0,
+    inout MISO0,
+    inout SCLK_sub,
+    inout MOSI_sub,
+    inout MISO_sub,
+    inout EXT_CLK_IN,
+    inout GPIO7,
+    inout GPIO8
+    );
+ 
+ 
+    
+`ifdef ARM_CMSDK_INCLUDE_CLKGATE
+  parameter CLKGATE_PRESENT = 1;
+`else
+  parameter CLKGATE_PRESENT = 0;
+`endif
+  // Big or Little Endian
+  // For the changes in the endianness of the system it should be noted that hex file used
+  // in the instantiation of the cmsdk_debug_tester is also impacted. Therefore the
+  // following changes are enforced:
+  //
+  // BE=0 (LITTLE) -> .ROM_MEMFILE("debugtester_le.hex")
+  //
+  // BE=1 (BIG)    -> .ROM_MEMFILE("debugtester_be.hex")
+  parameter BE              = 0;   // Big or little endian
+
+  parameter BKPT            = 4;   // Number of breakpoint comparators
+  parameter DBG             = 1;   // Debug configuration
+  parameter NUMIRQ          = 32;  // NUM of IRQ
+  parameter SMUL            = 0;   // Multiplier configuration
+  parameter SYST            = 1;   // SysTick
+  parameter WIC             = 1;   // Wake-up interrupt controller support
+  parameter WICLINES        = 34;  // Supported WIC lines
+  parameter WPT             = 2;   // Number of DWT comparators
+  parameter RESET_ALL_REGS  = 0;   // Do not reset all registers
+`ifdef CORTEX_M0PLUS
+  parameter AWIDTH          = 16;  // Micro Trace Buffer SRAM address width:
+                                   //   5 to 32
+  parameter BASEADDR        = 32'hF0000003; // ROM Table Base Address
+`ifdef ARM_CMSDK_INCLUDE_F16
+  parameter HWF             = 1;   // Half-Word Fetching
+`else
+  parameter HWF             = 0;   // Half-Word Fetching
+`endif
+`ifdef ARM_CMSDK_INCLUDE_IOP
+  parameter IOP             = 1;   // IO Port interface selected
+`else
+  parameter IOP             = 0;   // IO Port not selected
+`endif
+  parameter IRQDIS          = 32'h00000000; // Interrupt Disable
+  parameter MPU             = 0;   // 8 Memory Protection Regions
+`ifdef ARM_CMSDK_INCLUDE_MTB
+  parameter MTB             = 1;   // MTB present
+`else
+  parameter MTB             = 0;   // MTB not present
+`endif
+  parameter USER            = 1;   // User/Privilege
+  parameter VTOR            = 1;   // Vector Table Offset support
+`endif
+
+  //-----------------------------------------
+  // Memory options - see cmsdk_mcu_defs.v
+
+  //  This is defined in systems/cortex_m0_mcu/cmsdk_mcu_defs.v
+  //  Based on the definition constants in logical/models/memories/cmsdk_ahb_memory_model_defs.v
+  //  0) AHB_ROM_NONE             - memory not present
+  //  1) AHB_ROM_BEH_MODEL        - behavioral ROM memory
+  //  2) AHB_ROM_FPGA_SRAM_MODEL  - behavioral FPGA SRAM model with SRAM wrapper
+  //  3) AHB_ROM_FLASH32_MODEL    - behavioral 32-bit flash memory
+  parameter BOOT_MEM_TYPE   = `ARM_CMSDK_BOOT_MEM_TYPE;   // Boot loader memory type
+
+  //  This is defined in systems/cortex_m0_mcu/cmsdk_mcu_defs.v
+  //  Based on the definition constants in logical/models/memories/cmsdk_ahb_memory_model_defs.v
+  //  0) AHB_ROM_NONE             - memory not present (Not valid for a Cortex-M0 system)
+  //  1) AHB_ROM_BEH_MODEL        - behavioral ROM memory
+  //  2) AHB_ROM_FPGA_SRAM_MODEL  - behavioral FPGA SRAM model with SRAM wrapper
+  //  3) AHB_ROM_FLASH32_MODEL    - behavioral 32-bit flash memory
+  parameter ROM_MEM_TYPE    = `ARM_CMSDK_ROM_MEM_TYPE;   // ROM memory type
+
+  //  This is defined in systems/cortex_m0_mcu/cmsdk_mcu_defs.v
+  //  Based on the definition constants in logical/models/memories/cmsdk_ahb_memory_model_defs.v
+  //  0) AHB_RAM_NONE             - memory not present (Not valid for a Cortex-M0 system
+  //  1) AHB_RAM_BEH_MODEL        - behavioral RAM memory
+  //  2) AHB_RAM_FPGA_SRAM_MODEL  - behavioral SRAM model with SRAM wrapper
+  //  3) AHB_RAM_EXT_SRAM16_MODEL - for benchmarking using 16-bit external asynchronous SRAM
+  //  4) AHB_RAM_EXT_SRAM8_MODEL  - for benchmarking using 8-bit external asynchronous SRAM
+  parameter RAM_MEM_TYPE    = `ARM_CMSDK_RAM_MEM_TYPE;   // RAM memory type
+
+  //-----------------------------------------
+  // System options
+
+`ifdef ARM_CMSDK_INCLUDE_BITBAND
+  parameter INCLUDE_BITBAND = 1;
+  // Include instantiation of Bit-band wrapper
+  // This option add bit band wrapper to CPU interface
+`else
+  parameter INCLUDE_BITBAND = 0;
+`endif
+
+`ifdef ARM_CMSDK_INCLUDE_DMA
+  parameter INCLUDE_DMA = 1; // Include instantiation of DMA-230
+  // This option also add a number of bus components
+`else
+  parameter INCLUDE_DMA = 0;
+`endif
+
+`ifdef ARM_CMSDK_INCLUDE_JTAG
+  parameter INCLUDE_JTAG = 1;  // Include JTAG feature
+`else
+  parameter INCLUDE_JTAG = 0;  // Do not Include JTAG feature
+`endif
+//
+  wire [8:0] PE;
+  wire [8:0] IE;
+  wire [8:0] C;
+  wire [8:0] DS;
+  wire [8:0] I;
+  wire [8:0] OEN;
+  //wire CLK_FAST_IN;
+
+cmsdk_mcu
+   #(.CLKGATE_PRESENT  (CLKGATE_PRESENT),
+     .BE               (BE),
+     .BKPT             (BKPT),          // Number of breakpoint comparators
+     .DBG              (DBG),           // Debug configuration
+     .NUMIRQ           (NUMIRQ),        // NUMIRQ
+     .SMUL             (SMUL),          // Multiplier configuration
+     .SYST             (SYST),          // SysTick
+     .WIC              (WIC),           // Wake-up interrupt controller support
+     .WICLINES         (WICLINES),      // Supported WIC lines
+`ifdef CORTEX_M0PLUS
+     .AWIDTH           (AWIDTH),        // Micro Trace Buffer SRAM address width
+     .BASEADDR         (BASEADDR),      // ROM Table Base Address
+     .HWF              (HWF),           // Half Word Fetching
+     .IOP              (IOP),           // IO Port interface selected
+     .IRQDIS           (IRQDIS),        // Interrupt Disable
+     .MPU              (MPU),           // Memory Protection support
+     .MTB              (MTB),           // MTB select
+     .USER             (USER),          // User/Privilege
+     .VTOR             (VTOR),          // Vector Table Offset support
+`endif
+     .WPT              (WPT),           // Number of DWT comparators
+     .RESET_ALL_REGS   (RESET_ALL_REGS), // Do not reset all cmsdk_mcuregisters
+     .BOOT_MEM_TYPE    (BOOT_MEM_TYPE), // Boot loader memory type
+     .ROM_MEM_TYPE     (ROM_MEM_TYPE),  // ROM memory type
+     .RAM_MEM_TYPE     (RAM_MEM_TYPE),  // RAM loader memory type
+     .INCLUDE_BITBAND  (INCLUDE_BITBAND), // Include bit band wrapper
+     .INCLUDE_DMA      (INCLUDE_DMA),   // Include DMA feature
+     .INCLUDE_JTAG     (INCLUDE_JTAG)   // Include JTAG feature
+   )
+   u_cmsdk_mcu (
+  .CLK_FAST_IN      (CLK_FAST_IN),  // input
+  .CLK_SLOW_IN      (CLK_SLOW_IN), //input
+  //.XTAL2      (XTAL2),  // output
+  .POC       (POC),   // active low reset
+  .CLK_FAST_TUNE(CLK_FAST_TUNE),
+  .CLK_SLOW_TUNE(CLK_SLOW_TUNE),
+  .PE(PE),
+  .IE(IE),
+  .C(C),
+  .DS(DS),
+  .I(I),
+   .OEN(OEN)
+
+ );
+   
+   
+//NRST generator
+//NRST_generator_tb u_NRST_wrapper (
+//.CLK_IN(SYS_CLK),
+//.POC(POC),
+//.NRST(NRST));
+
+    
+//FreqDivider u_div_wrapper (
+//        .div(10'd5),
+//        .NRST(NRST),
+//        .CLK_IN(SYS_CLK),
+//        .CLK_OUT_BUF(CLK_FAST_IN)
+//    );      
+    
+    //IOBuffers immitating TSMC Pads
+
+//IO 0
+IOBUF IOBUF_0 (
+  .O(C[0]),   // 1-bit output: Buffer output (input to chip)
+  .I(I[0]),   // 1-bit input: Buffer input (output of chip)
+  .IO(ISPI0_SCLK_0), // 1-bit inout: Buffer inout (connect directly to top-level port)
+  .T(OEN[0])    // 1-bit input: 3-state enable input,  T=1 yields IO at high-z
+);
+
+
+//IO 1
+IOBUF IOBUF_1 (
+  .O(C[1]),   // 1-bit output: Buffer output (input to chip)
+  .I(I[1]),   // 1-bit input: Buffer input (output of chip)
+  .IO(ISPI0_SDIO_0), // 1-bit inout: Buffer inout (connect directly to top-level port)
+  .T(OEN[1])    // 1-bit input: 3-state enable input,  T=1 yields IO at high-z
+);
+
+//IO 2
+
+
+IOBUF IOBUF_2 (
+  .O(C[2]),   // 1-bit output: Buffer output (input to chip)
+  .I(I[2]),   // 1-bit input: Buffer input (output of chip)
+  .IO(MISO0), // 1-bit inout: Buffer inout (connect directly to top-level port)
+  .T(OEN[2])    // 1-bit input: 3-state enable input,  T=1 yields IO at high-z
+);
+
+
+//IO 3
+IOBUF IOBUF_3 (
+  .O(C[3]),   // 1-bit output: Buffer output (input to chip)
+  .I(I[3]),   // 1-bit input: Buffer input (output of chip)
+  .IO(SCLK_sub), // 1-bit inout: Buffer inout (connect directly to top-level port)
+  .T(OEN[3])    // 1-bit input: 3-state enable input,  T=1 yields IO at high-z
+);
+
+//IO 4
+IOBUF IOBUF_4 (
+  .O(C[4]),   // 1-bit output: Buffer output (input to chip)
+  .I(I[4]),   // 1-bit input: Buffer input (output of chip)
+  .IO(MOSI_sub), // 1-bit inout: Buffer inout (connect directly to top-level port)
+  .T(OEN[4])    // 1-bit input: 3-state enable input,  T=1 yields IO at high-z
+);       
+ 
+ //IO 5 
+ IOBUF IOBUF_5 (
+  .O(C[5]),   // 1-bit output: Buffer output (input to chip)
+  .I(I[5]),   // 1-bit input: Buffer input (output of chip)
+  .IO(MISO_sub), // 1-bit inout: Buffer inout (connect directly to top-level port)
+  .T(OEN[5])    // 1-bit input: 3-state enable input,  T=1 yields IO at high-z
+);
+
+//IO 6
+IOBUF IOBUF_6 (
+  .O(C[6]),   // 1-bit output: Buffer output (input to chip)
+  .I(I[6]),   // 1-bit input: Buffer input (output of chip)
+  .IO(EXT_CLK_IN), // 1-bit inout: Buffer inout (connect directly to top-level port)
+  .T(OEN[6])    // 1-bit input: 3-state enable input,  T=1 yields IO at high-z
+);
+
+//Disconnected
+IOBUF IOBUF_7 (
+  .O(C[7]),   // 1-bit output: Buffer output (input to chip)
+  .I(I[7]),   // 1-bit input: Buffer input (output of chip)
+  .IO(GPIO7), // 1-bit inout: Buffer inout (connect directly to top-level port)
+  .T(OEN[7])    // 1-bit input: 3-state enable input,  T=1 yields IO at high-z
+);
+
+//Disconnected
+IOBUF IOBUF_8 (
+  .O(C[8]),   // 1-bit output: Buffer output (input to chip)
+  .I(I[8]),   // 1-bit input: Buffer input (output of chip)
+  .IO(GPIO8), // 1-bit inout: Buffer inout (connect directly to top-level port)
+  .T(OEN[8])    // 1-bit input: 3-state enable input,  T=1 yields IO at high-z
+);
+
+    
+    
+endmodule
