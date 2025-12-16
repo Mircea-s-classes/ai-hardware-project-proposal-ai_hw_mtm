@@ -8,3 +8,4 @@ In general, the design works like this:
 3. The chips can be operated in bidirectional or unidirectional mode, and we use bidirectional mode for generalizability
 4. the SoCs can broadcast packets in 4 directions to simulate a 2D, mesh-based network. This would allow us to scale the network up or down depending on resource requirements and availability
 
+in terms of the XDC files, general_1 describes the usual Pynq board parameters while _2 is our specific implementation, just to show the changes we made to the standard
