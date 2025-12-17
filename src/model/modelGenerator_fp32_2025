@@ -1,0 +1,227 @@
+import tensorflow as tf
+import numpy as np
+import librosa
+import tensorflow_datasets as tfds
+from tensorflow.keras import layers, models
+import matplotlib.pyplot as plt
+import seaborn as sns
+import concurrent.futures
+from sklearn.utils import class_weight
+from sklearn.metrics import accuracy_score, confusion_matrix
+
+from tqdm.keras import TqdmCallback  # <- tqdm progress bar for Keras [web:100][web:124]
+
+# =========================
+# Load Speech Commands
+# =========================
+dataset, info = tfds.load("speech_commands", with_info=True, as_supervised=True)
+train_data = dataset['train'].take(10000)  # limit train set for speed
+test_data  = dataset['test'].take(5000)  # limit test set for speed
+
+# Optional: check dataset sizes
+train_size = sum(1 for _ in train_data)
+test_size  = sum(1 for _ in test_data)
+print(f"Train dataset size: {train_size}")
+print(f"Test dataset size:  {test_size}")
+
+# =========================
+# Model: binary yes vs noise
+# =========================
+num_features = 50  # MFCCs per clip
+
+model = models.Sequential([
+    layers.Reshape((1, num_features, 1), input_shape=(num_features,)),
+
+    layers.DepthwiseConv2D(
+        kernel_size=(1, 5),
+        depth_multiplier=1,
+        padding='valid',
+        activation='relu',
+        use_bias=False
+    ),
+
+    layers.Flatten(),
+    layers.Dense(32, activation='relu'),
+    layers.Dense(1, activation='sigmoid')  # yes vs not-yes (noise/unknown)
+])
+
+model.compile(
+    optimizer='adam',
+    loss='binary_crossentropy',
+    metrics=['accuracy']
+)
+print("Model compiled")
+model.summary()
+
+# =========================
+# Feature extraction
+# =========================
+def extract_features_optimized(audio_data, sample_rate=16000):
+    # audio_data is TF tensor with 16-bit PCM
+    audio_array = audio_data.numpy().astype(np.float32) / 32768.0
+    mfccs = librosa.feature.mfcc(y=audio_array, sr=sample_rate, n_mfcc=num_features)
+    mfccs_mean = np.mean(mfccs, axis=1)  # (50,)
+    return mfccs_mean
+
+# =========================
+# Label mapping: yes vs noise
+# =========================
+# 1 = yes, 0 = noise/unknown (includes 'off' and all other labels)
+def map_label_to_binary(label_str):
+    return 1 if label_str == 'yes' else 0
+
+def process_sample_binary(audio, label, labels):
+    label_value = label.numpy()
+    label_str = labels[label_value]
+    features = extract_features_optimized(audio)
+    new_label = map_label_to_binary(label_str)
+    return features, new_label
+
+def label_data_binary(dataset):
+    labels = info.features['label'].names
+    results = []
+
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+        futures = [
+            executor.submit(process_sample_binary, audio, label, labels)
+            for audio, label in dataset
+        ]
+        for future in concurrent.futures.as_completed(futures):
+            results.append(future.result())
+
+    X, y = zip(*results)
+    X = np.array(X)
+    y = np.array(y, dtype=np.int32)
+
+    # Inspect distribution
+    unique, counts = np.unique(y, return_counts=True)
+    print("Binary class distribution (0=noise,1=yes):", dict(zip(unique, counts)))
+    return X, y
+
+# Build train/test sets
+X_train, y_train = label_data_binary(train_data)
+X_test,  y_test  = label_data_binary(test_data)
+
+# =========================
+# Class weights
+# =========================
+class_weights = class_weight.compute_class_weight(
+    class_weight='balanced',
+    classes=np.unique(y_train),
+    y=y_train
+)
+class_weight_dict = {i: class_weights[i] for i in range(len(class_weights))}
+print("Class weights:", class_weight_dict)
+
+# =========================
+# Train with tqdm progress bar
+# =========================
+# verbose=0 disables Keras' own bar; TqdmCallback(verbose=2) shows epoch+batch bars [web:100][web:124]
+history = model.fit(
+    X_train, y_train,
+    epochs=200,
+    batch_size=50,
+    validation_data=(X_test, y_test),
+    class_weight=class_weight_dict,
+    verbose=0,
+    callbacks=[TqdmCallback(verbose=2)]
+)
+
+# =========================
+# Plots
+# =========================
+plt.figure()
+plt.plot(history.history['accuracy'])
+plt.plot(history.history['val_accuracy'])
+plt.title('Model accuracy')
+plt.xlabel('Epoch')
+plt.ylabel('Accuracy')
+plt.legend(['Train', 'Test'], loc='upper left')
+plt.show()
+
+plt.figure()
+plt.plot(history.history['loss'])
+plt.plot(history.history['val_loss'])
+plt.title('Model loss')
+plt.xlabel('Epoch')
+plt.ylabel('Loss')
+plt.legend(['Train', 'Test'], loc='upper left')
+plt.show()
+
+# =========================
+# Save weights
+# =========================
+conv_weights = model.layers[1].get_weights()[0]
+fc_weights   = model.layers[3].get_weights()[0]
+fc_bias      = model.layers[3].get_weights()[1]
+fc_weights2  = model.layers[4].get_weights()[0]
+fc_bias2     = model.layers[4].get_weights()[1]
+
+def save_weights(filename, data):
+    with open(filename, "w") as f:
+        f.write(", ".join(map(str, data.flatten())))
+
+save_weights("conv_weights_float.txt", conv_weights)
+save_weights("fc_weights_float.txt",   fc_weights)
+save_weights("fc_bias_float.txt",      fc_bias)
+save_weights("fc_weights2_float.txt",  fc_weights2)
+save_weights("fc_bias2_float.txt",     fc_bias2)
+
+print("Floating-point weights and biases saved.")
+
+# =========================
+# Rebuild model and load weights
+# =========================
+model_reload = models.Sequential([
+    layers.Reshape((1, num_features, 1), input_shape=(num_features,)),
+    layers.DepthwiseConv2D(kernel_size=(1, 5), depth_multiplier=1,
+                           padding='valid', activation='relu', use_bias=False),
+    layers.Flatten(),
+    layers.Dense(32, activation='relu'),
+    layers.Dense(1, activation='sigmoid')
+])
+
+conv_weights = np.genfromtxt("conv_weights_float.txt", delimiter=',')
+fc_weights   = np.genfromtxt("fc_weights_float.txt",   delimiter=',')
+fc_bias      = np.genfromtxt("fc_bias_float.txt",      delimiter=',')
+fc_weights2  = np.genfromtxt("fc_weights2_float.txt",  delimiter=',')
+fc_bias2     = np.genfromtxt("fc_bias2_float.txt",     delimiter=',')
+
+# Shapes: conv: (1,5,1,1); flatten output: 46; dense: (46,32); out: (32,1)
+conv_weights = conv_weights.reshape(1, 5, 1, 1)
+fc_weights   = fc_weights.reshape(46, 32)
+fc_weights2  = fc_weights2.reshape(32, 1)
+fc_bias2     = fc_bias2.reshape(1,)
+
+model_reload.layers[1].set_weights([conv_weights])
+model_reload.layers[3].set_weights([fc_weights, fc_bias])
+model_reload.layers[4].set_weights([fc_weights2, fc_bias2])
+
+# =========================
+# Evaluation
+# =========================
+y_pred_prob = model_reload.predict(X_test)
+# Conservative threshold for wake word; tune as needed
+threshold = 0.4
+y_pred = (y_pred_prob >= threshold).astype(int)
+
+accuracy = accuracy_score(y_test, y_pred)
+print(f"Accuracy (threshold={threshold}): {accuracy}")
+
+cm = confusion_matrix(y_test, y_pred)
+print("Confusion Matrix (rows=true, cols=pred):")
+print(cm)
+
+# Optional: histogram of prediction scores for positives/negatives
+yes_scores   = y_pred_prob[y_test == 1]
+noise_scores = y_pred_prob[y_test == 0]
+
+plt.figure()
+plt.hist(yes_scores,   bins=50, color='green', alpha=0.6, label='yes',   density=True)
+plt.hist(noise_scores, bins=50, color='red',   alpha=0.6, label='noise', density=True)
+plt.axvline(x=threshold, color='black', linestyle='--', label=f'Threshold = {threshold}')
+plt.legend()
+plt.title('Prediction score distribution')
+plt.xlabel('p(yes)')
+plt.ylabel('Density')
+plt.show()
