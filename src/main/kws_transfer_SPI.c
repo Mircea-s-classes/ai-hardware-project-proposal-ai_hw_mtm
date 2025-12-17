@@ -59,9 +59,9 @@ int main() {
 
 		//*(volatile int*) (ispic_base_addr + 0x14) = 0xFFFFFFFF; //data
 		//*(volatile int*) (ispic_base_addr + 0x34) = 0x00000009; //routing_path_in_0_0 = 00001001 or ac0, x=1, y=1
-		*(volatile int*) (ispic_base_addr+ 0x0C) = 0xFF030003; //Instruction 1a (write) to address 3 but from fourth direction
+		//*(volatile int*) (ispic_base_addr+ 0x0C) = 0xFF000003; //Synchronize
 		//*(volatile int*) (ispic_base_addr+ 0x0C) = 0x1A030002; //Remove Flag 
-		delay(4000);
+		delay(100);
 
     // Setup crossbar / SPI module
     //*(volatile int*) (0x4000B008) = 0xA6100009; // crossbar
@@ -83,7 +83,7 @@ int main() {
 	//Additional code to make NodeC enter PMUC Compatability mode before trying data transfer of any kind
 	//*(volatile int*) (ispic_base_addr+ 0x00) = 0x40100000; //set the pul and pdl (hex 100) and the enables to 0 to match PMU
 	//This next line puts it into NodeC Mode	
-	*(volatile int*) (ispic_base_addr+ 0x00) = 0x40100009; //set the pul and pdl (hex 100) and the enables to 1 to match NodeCs
+	*(volatile int*) (ispic_base_addr+ 0x00) = 0x3FF00009;//0; //set the pul and pdl (hex 100) and the enables to 1 to match NodeCs
 	//Additional code to give area code and basic information
 	*(volatile int*) (ispic_base_addr+ 0x04) = 0x26014000; //ACBW=2, only south and east neighbors valid, address is (AC=0, X=0,Y=1), bridge_write_en is 1, all else is 0
 	*(volatile int*) (ispic_base_addr+ 0xD0) = 0x00000004; //I just want to feed in area code 1, this original node must reroute data to the east. data is entered in reverse order, but bitwise order is correct. this stores direction East in AC1
@@ -100,14 +100,14 @@ int main() {
 
     // -------------------- PROCESS MULTI-INPUT --------------------
 float input_array[NUM_TESTS][INPUT_SIZE] = {
-    // Example 1 (yes)
+    // Example 1 (off)
+    {-466.54755, 71.19848, 9.157173, -0.18938065, -5.792581, -3.186954, -7.601721, -10.206321, -2.974451, 0.83728015, -5.308984, -2.9543402, -11.076041, -8.643108, -9.090586, -7.7736, -2.9261956, -5.184562, -1.0420167, -0.36623847, -5.2570124, -5.6099086, 1.0122267, -0.74929, -0.3525049, -1.1343989, -1.9945347, -2.3846726, -2.465746, -2.6286197, -3.5751576, 0.651047, 1.7097361, 3.2906182, 1.2641228, 0.37159067, -0.09086024, 0.16995955, -0.11144769, -0.6058644, 2.16926, 2.572755, 2.5498264, 0.14227563, -1.1149516, -0.83436555, -0.4273407, -1.053514, -1.4311228, -1.8964574},
+
+    // Example 2 (yes)
     {-444.95856, 58.542336, 18.05262, 30.173512, 0.6866538, 15.617227, -12.520357, 3.9046752, -3.627293, 6.5801973, -8.113564, 13.387428, -12.955448, 5.8316474, -4.4946904, -2.3746157, -5.7689943, 2.4510553, -8.2580185, -0.13677117, -2.0417533, 2.2710068, -3.1866713, -1.6654011, -3.1574187, 0.053224698, -5.149588, 0.23926407, -4.5624046, -2.6701326, -1.4743314, -2.0951657, -1.0312055, -1.6219964, -4.158239, -0.04374194, -0.48332465, -1.1609437, 0.90399617, -0.28432813, -3.1150825, -1.4177009, -2.0603538, -1.39741, -1.2998035, 0.017326394, -2.6161382, -1.4018486, -1.5016721, 0.40286532},
     
-    // Example 2 (yes)
+    // Example 3z (yes)
     {-385.74268, 20.73491, -13.549039, 14.032573, -26.134468, -9.826301, -22.696672, -17.075327, -6.5294313, 3.812132, -13.393556, -3.7865477, 0.13760722, -6.592313, -11.868204, 0.3299724, -7.953868, -3.1455436, -5.3159776, 0.5183869, -6.78388, -7.9420924, 1.5330213, -2.7342808, -2.0344284, 1.6216152, -6.91165, 3.349067, -7.8806415, 2.4811876, -5.502304, -2.1342874, -2.5019197, 1.8276901, 1.0927411, 0.7949699, 1.8408152, 5.796665, 4.60053, 1.4702506, 3.961267, 0.5529433, 1.305158, 0.71201205, -0.09334111, 1.3094442, 0.27844608, 2.8053682, 2.0893497, 1.6603061},
-    
-    // Example 3 (off)
-    {-466.54755, 71.19848, 9.157173, -0.18938065, -5.792581, -3.186954, -7.601721, -10.206321, -2.974451, 0.83728015, -5.308984, -2.9543402, -11.076041, -8.643108, -9.090586, -7.7736, -2.9261956, -5.184562, -1.0420167, -0.36623847, -5.2570124, -5.6099086, 1.0122267, -0.74929, -0.3525049, -1.1343989, -1.9945347, -2.3846726, -2.465746, -2.6286197, -3.5751576, 0.651047, 1.7097361, 3.2906182, 1.2641228, 0.37159067, -0.09086024, 0.16995955, -0.11144769, -0.6058644, 2.16926, 2.572755, 2.5498264, 0.14227563, -1.1149516, -0.83436555, -0.4273407, -1.053514, -1.4311228, -1.8964574},
 
     // Example 4 (yes)
     {-314.8527, 81.78435, 22.153793, 34.273994, -4.3826675, 12.919918, -11.92841, 2.4505188, -10.023171, 1.0775545, -10.258976, -1.2045219, -8.513754, -0.22134875, -5.695197, 2.8957863, -6.5955815, 2.1071568, -5.3264503, 3.083253, -7.587164, 2.3239472, -8.351195, -1.7179782, -1.6519976, -4.547012, 0.10031873, -1.0172638, -5.032237, -1.6926901, -3.9602137, -3.6437678, -3.2398617, -3.5734015, -2.5438862, 0.2732932, -2.0621612, -1.996695, -1.5699074, -1.2626266, -4.4928484, -0.75021267, -0.16073748, -1.3694234, -0.7531104, -1.8524882, 0.38658038, -1.5967689, 0.23213881, 0.036962986},
@@ -139,37 +139,35 @@ float input_array[NUM_TESTS][INPUT_SIZE] = {
 
 
 
-    float kernel[CONV_KERNEL_SIZE_X] = {0.3056811, 0.6276837, 0.13463047, -0.43626565, -0.65749604};
+    float kernel[CONV_KERNEL_SIZE_X] = {-0.16633753, -1.2324247, 1.068705, 0.81941456, -1.0902781};
     float conv_output[CONV_OUTPUT_SIZE_X];
 
 
-    for (int t = 0; t < 1/*NUM_TESTS*/; t++) { //cycle through the entire input array
+    for (int t = 0; t < 10; t++) { //cycle through the entire input array
 
 	    depthwise_conv2d(input_array[t], kernel, INPUT_SIZE, CONV_KERNEL_SIZE_X, conv_output);
 	    convertArray(conv_output, CONV_OUTPUT_SIZE_X);
+
+	*(volatile int*) (ispic_base_addr+ 0x0C) = 0xFF000003; //Synchronize
+	delay(500);
 
 	    // -------------------- SEND DATA --------------------
 	    for (size_t i = 0; i < CONV_OUTPUT_SIZE_X; i++) {
 		*(volatile int *) (spi_sub_base_addr + 0x4) = i;
 
-		//Synchronize//
-		*(volatile int*) (ispic_base_addr+ 0x0C) = 0xFF030003; //Instruction 1a (write) to address 3 but from fourth direction
-		//Synchronize//
-
 		// Configure ISPI packet
 		*(volatile int*) (ispic_base_addr + 0x14) = float_packets[i]; //data
-		*(volatile int*) (ispic_base_addr + 0x34) = 0x00000009; //routing_path_in_0_0 = 00001001 or ac0, x=1, y=1
-		*(volatile int*) (ispic_base_addr+ 0x0C) = 0x1A030003; //Instruction 02 (normal write) to address 3 but from fourth direction
+		*(volatile int*) (ispic_base_addr + 0x34) = 0x00000000; //routing_path_in_0_0 = 00000000 or ac0, x=0, y=0
+		*(volatile int*) (ispic_base_addr+ 0x0C) = 0x1A030003; //Instruction 1a (normal write) to address 3
 		*(volatile int*) (ispic_base_addr+ 0x0C) = 0x1A030002; //Remove Flag 
-		// Simple delay
-		delay(1000);
-		*(volatile int*) (ispic_base_addr+ 0x0C) = 0x03030003;
-		delay(100);
-	    }
+
+		delay(500);
+		//*(volatile int*) (ispic_base_addr+ 0x0C) = 0x03030003; //reading
+	    } 
 
 	// Signal end of transmission
 	*(volatile int *) (spi_sub_base_addr + 0x4) = 0xa11900d6;
-	delay(50000); //needs to be very large because pipelining is not complete yet!
+	delay(100000); //needs to be very large because pipelining is not complete yet!
 	}
 
     return 0;
